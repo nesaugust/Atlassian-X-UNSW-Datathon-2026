@@ -363,19 +363,52 @@ def train_models(joined: pd.DataFrame, output_dir: Path) -> tuple[Pipeline, pd.D
 
     scored = joined.copy()
     scored["Risk Score"] = best_model.predict_proba(scored[feature_columns])[:, 1]
-    scored["Risk Band"] = pd.cut(
-        scored["Risk Score"], bins=[-0.01, 0.35, 0.60, 1.0], labels=["Low", "Medium", "High"]
+    # These are relative workload tiers, not calibrated probability bands. The weak
+    # model compresses scores around the base rate, so fixed probability cut-offs
+    # create an unusable queue. Ranking keeps the prototype operational while the
+    # label makes the limitation explicit: Tier 1 is simply the top-scored 10%.
+    scored["Review Percentile"] = scored["Risk Score"].rank(
+        method="first", ascending=False, pct=True
+    )
+    scored["Review Tier"] = np.select(
+        [
+            scored["Review Percentile"] <= 0.10,
+            scored["Review Percentile"] <= 0.30,
+        ],
+        ["Tier 1 · Top 10%", "Tier 2 · Next 20%"],
+        default="Tier 3 · Remaining 70%",
     )
     value_map = {"Free": 1, "Standard": 2, "Premium": 3, "Enterprise": 4}
     scored["Value Score"] = scored["Plan Type"].map(value_map).fillna(1)
     scored["Priority Score"] = 0.7 * scored["Risk Score"] + 0.3 * (scored["Value Score"] / 4)
+
+    # Human-readable context for review. These deterministic signals describe the
+    # customer's observed usage; they are not causal claims or SHAP explanations.
+    low_active_days = scored["Total Active Days"].quantile(0.25)
+    low_sessions = scored["Total Sessions"].quantile(0.25)
+    low_actions = scored["Total Product Actions"].quantile(0.25)
+
+    def observed_signals(row: pd.Series) -> str:
+        signals = []
+        if pd.notna(row["Session Trend per Month"]) and row["Session Trend per Month"] < 0:
+            signals.append("Declining sessions")
+        if pd.notna(row["Total Active Days"]) and row["Total Active Days"] <= low_active_days:
+            signals.append("Low active days")
+        if pd.notna(row["Total Sessions"]) and row["Total Sessions"] <= low_sessions:
+            signals.append("Low session volume")
+        if pd.notna(row["Total Product Actions"]) and row["Total Product Actions"] <= low_actions:
+            signals.append("Low product actions")
+        return "; ".join(signals[:3]) if signals else "No strong usage signal"
+
+    scored["Observed Signals"] = scored.apply(observed_signals, axis=1)
     scored["Recommended Action"] = np.select(
         [
-            (scored["Risk Band"] == "High") & (scored["Plan Type"].isin(["Enterprise", "Premium"])),
-            scored["Risk Band"] == "High",
-            scored["Risk Band"] == "Medium",
+            (scored["Review Tier"] == "Tier 1 · Top 10%")
+            & (scored["Plan Type"].isin(["Enterprise", "Premium"])),
+            scored["Review Tier"] == "Tier 1 · Top 10%",
+            scored["Review Tier"] == "Tier 2 · Next 20%",
         ],
-        ["Specialist outreach", "Proactive support review", "Monitor and send targeted guidance"],
+        ["Specialist outreach", "Proactive support review", "Targeted product guidance"],
         default="Standard support",
     )
 
@@ -385,7 +418,8 @@ def train_models(joined: pd.DataFrame, output_dir: Path) -> tuple[Pipeline, pd.D
         "Ticket Channel", "Customer Satisfaction Rating", TARGET, "Total Active Days",
         "Total Sessions", "Total Product Actions", "Average Collaborators",
         "Average Integrations Used", "Session Trend per Month", "Session Change Percent",
-        "Risk Score", "Risk Band", "Value Score", "Priority Score", "Recommended Action",
+        "Risk Score", "Review Percentile", "Review Tier", "Value Score", "Priority Score",
+        "Observed Signals", "Recommended Action",
     ]
     scored[public_columns].sort_values("Priority Score", ascending=False).to_csv(
         output_dir / "scored_tickets.csv", index=False
