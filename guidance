@@ -1,0 +1,4 @@
+run in the terminal :
+pip install -r requirements.txt
+python pipeline.py --data-dir data --output-dir outputs
+streamlit run app.py

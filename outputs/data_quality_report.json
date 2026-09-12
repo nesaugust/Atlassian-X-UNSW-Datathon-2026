@@ -1,0 +1,16 @@
+{
+  "ticket_rows": 8469,
+  "customer_rows": 8320,
+  "usage_rows": 42210,
+  "ticket_email_match_rate": 1.0,
+  "usage_customer_match_rate": 1.0,
+  "duplicate_ticket_rows": 0,
+  "duplicate_customer_rows": 0,
+  "duplicate_usage_rows": 0,
+  "joined_rows": 8469,
+  "missing_customer_id_after_join": 0,
+  "missing_usage_after_join": 0,
+  "negative_resolution_durations": 1365,
+  "satisfaction_missing_rate": 0.6730428622033298,
+  "risk_proxy_rate": 0.4070138150903294
+}
