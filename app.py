@@ -19,6 +19,10 @@ st.markdown(
     """
     <style>
     .stApp { background: #F7F8FA; color: #172B4D; }
+    html, body, [class*="css"] { font-size: 16px; }
+    [data-testid="stAppViewContainer"], [data-testid="stAppViewContainer"] * {
+        color: #172B4D;
+    }
     [data-testid="stSidebar"] { background: #F1F3F6; border-right: 1px solid #DFE1E6; }
     [data-testid="stHeader"] { background: rgba(247,248,250,.94); }
     [data-testid="stSidebar"] * { color: #172B4D; }
@@ -26,17 +30,23 @@ st.markdown(
         background: #FFFFFF; border: 1px solid #DFE1E6; border-radius: 10px;
         padding: 16px 18px; box-shadow: 0 2px 8px rgba(9,30,66,.08);
     }
-    [data-testid="stMetricLabel"] { color: #5E6C84; font-weight: 600; }
-    [data-testid="stMetricValue"] { color: #172B4D; }
+    [data-testid="stMetricLabel"] { color: #344563 !important; font-size: 0.95rem; font-weight: 650; }
+    [data-testid="stMetricValue"] { color: #172B4D !important; font-size: 2rem; font-weight: 700; }
     .block-container { max-width: 1450px; padding-top: 2.1rem; padding-bottom: 3rem; }
     h1, h2, h3 { color: #172B4D; letter-spacing: -0.02em; }
-    p, label, .stCaption { color: #44546F; }
-    div[data-baseweb="select"] > div { background: #FFFFFF; border-color: #B6C2CF; }
-    span[data-baseweb="tag"] { background-color: #E9F2FF !important; }
-    span[data-baseweb="tag"] span { color: #0C66E4 !important; }
+    p, label, .stCaption, [data-testid="stCaptionContainer"] {
+        color: #344563 !important; font-size: 0.95rem;
+    }
+    [data-testid="stSidebar"] label { color: #172B4D !important; font-weight: 600; }
+    div[data-baseweb="select"] > div {
+        background: #FFFFFF !important; border-color: #8590A2 !important; color: #172B4D !important;
+    }
+    div[data-baseweb="select"] input { color: #172B4D !important; }
+    span[data-baseweb="tag"] { background: #DDEBFF !important; }
+    span[data-baseweb="tag"], span[data-baseweb="tag"] * { color: #0747A6 !important; }
     .stTabs [data-baseweb="tab-list"] { gap: 12px; border-bottom: 1px solid #DFE1E6; }
-    .stTabs [data-baseweb="tab"] { color: #44546F; font-weight: 600; }
-    .stTabs [aria-selected="true"] { color: #0C66E4; }
+    .stTabs [data-baseweb="tab"] { color: #344563 !important; font-size: 0.95rem; font-weight: 650; }
+    .stTabs [aria-selected="true"] { color: #0C66E4 !important; }
     [data-testid="stAlert"] { background: #E9F2FF; border: 1px solid #B3D4FF; color: #172B4D; }
     [data-testid="stDataFrame"] { border: 1px solid #DFE1E6; border-radius: 8px; }
     .stButton > button, .stDownloadButton > button {
@@ -85,16 +95,27 @@ def polish_chart(fig):
     fig.update_layout(
         paper_bgcolor=PANEL,
         plot_bgcolor=PANEL,
-        font_color=TEXT,
+        font=dict(family="Arial, sans-serif", size=14, color=TEXT),
         title_font_color=ATLASSIAN_NAVY,
-        coloraxis_colorbar=dict(tickfont=dict(color=TEXT)),
+        coloraxis_colorbar=dict(
+            tickfont=dict(color=TEXT, size=12),
+            title_font=dict(color=TEXT, size=12),
+        ),
         margin=dict(l=25, r=25, t=65, b=30),
         legend_title_text="",
-        title_font=dict(size=16),
+        title_font=dict(size=18, color=ATLASSIAN_NAVY),
         hoverlabel=dict(bgcolor="#FFFFFF", font_color=TEXT),
     )
-    fig.update_xaxes(gridcolor="#EBECF0", zerolinecolor="#DFE1E6", linecolor="#B6C2CF")
-    fig.update_yaxes(gridcolor="#EBECF0", zerolinecolor="#DFE1E6", linecolor="#B6C2CF")
+    fig.update_xaxes(
+        gridcolor="#DDE2E8", zerolinecolor="#C7CED8", linecolor="#8590A2",
+        tickfont=dict(color="#172B4D", size=13),
+        title_font=dict(color="#172B4D", size=14),
+    )
+    fig.update_yaxes(
+        gridcolor="#DDE2E8", zerolinecolor="#C7CED8", linecolor="#8590A2",
+        tickfont=dict(color="#172B4D", size=13),
+        title_font=dict(color="#172B4D", size=14),
+    )
     return fig
 
 st.sidebar.header("Filters")
