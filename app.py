@@ -220,7 +220,7 @@ with tab3:
     fig_importance = px.bar(
             top, x="Importance", y="Feature", orientation="h",
             title="Top model signals", color_discrete_sequence=[ATLASSIAN_PURPLE],
-    )gi
+    )
     st.plotly_chart(polish_chart(fig_importance), use_container_width=True)
     st.markdown(
         """
