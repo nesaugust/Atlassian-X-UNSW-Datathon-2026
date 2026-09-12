@@ -60,7 +60,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.title("Customer Support Early Warning")
-st.caption("Executive decision prototype · cancellation/refund request signal · not confirmed churn")
+st.caption(
+    "Explores whether product usage and customer context can identify proactive support opportunities "
+    "before a cancellation or refund request."
+)
 
 
 @st.cache_data
@@ -144,8 +147,8 @@ with tab1:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Tickets", f"{len(filtered):,}")
     c2.metric("Customers", f"{filtered['Customer ID'].nunique():,}")
-    c3.metric("High model-score band", f"{(filtered['Risk Band'] == 'High').mean():.1%}")
-    c4.metric("Observed cancel/refund", f"{filtered['At Risk'].mean():.1%}")
+    c3.metric("High review-score band", f"{(filtered['Risk Band'] == 'High').mean():.1%}")
+    c4.metric("Cancel/refund requests", f"{filtered['At Risk'].mean():.1%}")
 
     left, right = st.columns(2)
     plan = filtered.groupby("Plan Type", as_index=False).agg(
@@ -161,14 +164,15 @@ with tab1:
     left.plotly_chart(polish_chart(fig_plan), use_container_width=True)
 
     product = filtered.groupby("Product Purchased", as_index=False).agg(
-        Mean_Risk=("Risk Score", "mean"), Customers=("Customer ID", "nunique")
+        Request_Rate=("At Risk", "mean"), Customers=("Customer ID", "nunique")
     )
     fig_product = px.bar(
-            product.sort_values("Mean_Risk", ascending=False),
-            x="Product Purchased", y="Mean_Risk", color_discrete_sequence=[ATLASSIAN_PURPLE],
-            title="Average exploratory model score by product",
-            labels={"Mean_Risk": "Average risk score"},
+            product.sort_values("Request_Rate", ascending=False),
+            x="Product Purchased", y="Request_Rate", color_discrete_sequence=[ATLASSIAN_PURPLE],
+            title="Observed cancellation/refund request rate by product",
+            labels={"Request_Rate": "Request rate"},
     )
+    fig_product.update_yaxes(tickformat=".0%")
     right.plotly_chart(polish_chart(fig_product), use_container_width=True)
 
     action = filtered["Recommended Action"].value_counts().rename_axis("Action").reset_index(name="Tickets")
