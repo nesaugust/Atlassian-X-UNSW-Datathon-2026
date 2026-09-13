@@ -15,6 +15,11 @@ ATLASSIAN_PURPLE = "#6554C0"
 PANEL = "#FFFFFF"
 TEXT = "#172B4D"
 
+PILOT_PLANS = {"Premium", "Enterprise"}
+PILOT_STATUSES = {"Open", "Pending Customer Response"}
+PILOT_TIERS = {"Tier 1 · Top 10%", "Tier 2 · Next 20%"}
+CANCEL_REFUND_TYPES = {"Cancellation request", "Refund request"}
+
 ATLASSIAN_MARK = (
     '<svg width="27" height="27" viewBox="0 0 32 32" role="img" aria-hidden="true">'
     '<path fill="#1868DB" d="M15.7 4.2c-.5 0-.9.3-1.1.8L4.8 24.7c-.3.7.2 1.5 1 1.5h5.1c.4 0 .8-.2 1-.6l5.9-12.1c.2-.5.2-1 0-1.5L16.8 5c-.1-.5-.6-.8-1.1-.8Z"/>'
@@ -347,7 +352,7 @@ st.markdown(
     '<div class="datathon-label">UNSW DataSoc × Atlassian Datathon 2026</div>'
     '</div>'
     '<h1>Customer Support Early Warning</h1>'
-    '<p>Explore whether product usage and customer context can identify proactive support opportunities before a cancellation or refund request.</p>'
+    '<p>A human-reviewed pilot that identifies earlier support opportunities and measures customer impact.</p>'
     '</div>',
     unsafe_allow_html=True,
 )
@@ -510,6 +515,16 @@ st.sidebar.markdown(
 
 st.sidebar.header("Dashboard filters")
 
+view_mode = st.sidebar.radio(
+    "Dashboard view",
+    ["Proactive pilot", "All historical tickets"],
+    index=0,
+    help=(
+        "The proactive pilot focuses on unresolved Premium and Enterprise "
+        "tickets in Review Tiers 1 and 2, before a cancellation or refund request."
+    ),
+)
+
 st.sidebar.markdown(
     '<div class="filter-intro">Leave a field blank to include all values.</div>',
     unsafe_allow_html=True,
@@ -600,14 +615,34 @@ def selected_or_all(column, selection):
     return data[column].isin(selection)
 
 
+if view_mode == "Proactive pilot":
+    mode_mask = (
+        data["Plan Type"].isin(PILOT_PLANS)
+        & data["Ticket Status"].isin(PILOT_STATUSES)
+        & data["Review Tier"].isin(PILOT_TIERS)
+        & ~data["Ticket Type"].isin(CANCEL_REFUND_TYPES)
+    )
+else:
+    mode_mask = pd.Series(True, index=data.index)
+
+
 filtered = data[
-    selected_or_all("Product Purchased", products)
+    mode_mask
+    & selected_or_all("Product Purchased", products)
     & selected_or_all("Plan Type", plans)
     & selected_or_all("Region", regions)
     & selected_or_all("Industry", industries)
     & selected_or_all("Company Size", company_sizes)
     & selected_or_all("Ticket Priority", priorities)
 ].copy()
+
+
+if view_mode == "Proactive pilot":
+    st.success(
+        "PROACTIVE PILOT VIEW · Unresolved Tier 1–2 Premium and Enterprise "
+        "tickets are shown. Existing cancellation and refund requests are "
+        "excluded so the queue represents an earlier support opportunity."
+    )
 
 
 if filtered.empty:
@@ -630,90 +665,99 @@ tab1, tab2, tab3 = st.tabs(
 with tab1:
     c1, c2, c3, c4, c5 = st.columns(5)
 
-    c1.metric(
-        "Tickets",
-        f"{len(filtered):,}",
-    )
-
-    c2.metric(
-        "Customers",
-        f"{filtered['Customer ID'].nunique():,}",
-    )
-
-    c3.metric(
-        "Tier 1 review queue",
-        f"{(filtered['Review Tier'] == 'Tier 1 · Top 10%').mean():.1%}",
-    )
-
-    c4.metric(
-        "Cancel/refund requests",
-        f"{filtered['At Risk'].mean():.1%}",
-    )
-
-    c5.metric(
-        "Satisfaction coverage",
-        f"{filtered['Customer Satisfaction Rating'].notna().mean():.1%}",
-    )
+    if view_mode == "Proactive pilot":
+        unresolved_total = data["Ticket Status"].isin(PILOT_STATUSES).sum()
+        c1.metric("Pilot tickets", f"{len(filtered):,}")
+        c2.metric("Pilot customers", f"{filtered['Customer ID'].nunique():,}")
+        c3.metric(
+            "Tier 1 tickets",
+            f"{(filtered['Review Tier'] == 'Tier 1 · Top 10%').sum():,}",
+        )
+        c4.metric(
+            "Tier 2 tickets",
+            f"{(filtered['Review Tier'] == 'Tier 2 · Next 20%').sum():,}",
+        )
+        c5.metric(
+            "Share of unresolved workload",
+            f"{len(filtered) / unresolved_total:.1%}",
+        )
+    else:
+        c1.metric("Tickets", f"{len(filtered):,}")
+        c2.metric("Customers", f"{filtered['Customer ID'].nunique():,}")
+        c3.metric(
+            "Tier 1 review queue",
+            f"{(filtered['Review Tier'] == 'Tier 1 · Top 10%').mean():.1%}",
+        )
+        c4.metric("Cancel/refund requests", f"{filtered['At Risk'].mean():.1%}")
+        c5.metric(
+            "Satisfaction coverage",
+            f"{filtered['Customer Satisfaction Rating'].notna().mean():.1%}",
+        )
 
     left, right = st.columns(2)
 
-    plan = (
-        filtered.groupby("Plan Type", as_index=False)
-        .agg(
-            Tickets=("Ticket ID", "count"),
-            Request_Rate=("At Risk", "mean"),
+    if view_mode == "Proactive pilot":
+        plan = (
+            filtered.groupby("Plan Type", as_index=False)
+            .agg(Tickets=("Ticket ID", "count"))
         )
-    )
-
-    fig_plan = px.bar(
-        plan.sort_values("Request_Rate", ascending=False),
-        x="Plan Type",
-        y="Request_Rate",
-        color="Tickets",
-        title="Observed cancellation/refund request rate by plan",
-        labels={
-            "Request_Rate": "Request rate",
-            "Plan Type": "Plan",
-        },
-        color_continuous_scale=[
-            "#DEEBFF",
-            ATLASSIAN_BLUE,
-        ],
-    )
-
-    fig_plan.update_yaxes(tickformat=".0%")
-
-    left.plotly_chart(
-        polish_chart(fig_plan),
-        use_container_width=True,
-    )
-
-    product = (
-        filtered.groupby("Product Purchased", as_index=False)
-        .agg(
-            Request_Rate=("At Risk", "mean"),
-            Customers=("Customer ID", "nunique"),
+        fig_plan = px.bar(
+            plan.sort_values("Tickets", ascending=False),
+            x="Plan Type",
+            y="Tickets",
+            title="Pilot tickets by plan",
+            labels={"Plan Type": "Plan"},
+            color_discrete_sequence=[ATLASSIAN_BLUE],
+            text_auto=True,
         )
-    )
+        left.plotly_chart(polish_chart(fig_plan), use_container_width=True)
 
-    fig_product = px.bar(
-        product.sort_values("Request_Rate", ascending=False),
-        x="Product Purchased",
-        y="Request_Rate",
-        title="Observed cancellation/refund request rate by product",
-        labels={
-            "Request_Rate": "Request rate",
-            "Product Purchased": "Product",
-        },
-        color_discrete_sequence=[ATLASSIAN_PURPLE],
-    )
+        tiers = (
+            filtered["Review Tier"]
+            .value_counts()
+            .rename_axis("Review Tier")
+            .reset_index(name="Tickets")
+        )
+        fig_tiers = px.bar(
+            tiers,
+            x="Review Tier",
+            y="Tickets",
+            title="Pilot workload by review tier",
+            color_discrete_sequence=[ATLASSIAN_PURPLE],
+            text_auto=True,
+        )
+        right.plotly_chart(polish_chart(fig_tiers), use_container_width=True)
+    else:
+        plan = (
+            filtered.groupby("Plan Type", as_index=False)
+            .agg(Tickets=("Ticket ID", "count"), Request_Rate=("At Risk", "mean"))
+        )
+        fig_plan = px.bar(
+            plan.sort_values("Request_Rate", ascending=False),
+            x="Plan Type",
+            y="Request_Rate",
+            color="Tickets",
+            title="Observed cancellation/refund request rate by plan",
+            labels={"Request_Rate": "Request rate", "Plan Type": "Plan"},
+            color_continuous_scale=["#DEEBFF", ATLASSIAN_BLUE],
+        )
+        fig_plan.update_yaxes(tickformat=".0%")
+        left.plotly_chart(polish_chart(fig_plan), use_container_width=True)
 
-    fig_product.update_yaxes(tickformat=".0%")
-
-    right.plotly_chart(
-        polish_chart(fig_product),
-        use_container_width=True,
-    )
+        product = (
+            filtered.groupby("Product Purchased", as_index=False)
+            .agg(Request_Rate=("At Risk", "mean"), Customers=("Customer ID", "nunique"))
+        )
+        fig_product = px.bar(
+            product.sort_values("Request_Rate", ascending=False),
+            x="Product Purchased",
+            y="Request_Rate",
+            title="Observed cancellation/refund request rate by product",
+            labels={"Request_Rate": "Request rate", "Product Purchased": "Product"},
+            color_discrete_sequence=[ATLASSIAN_PURPLE],
+        )
+        fig_product.update_yaxes(tickformat=".0%")
+        right.plotly_chart(polish_chart(fig_product), use_container_width=True)
 
     action = (
         filtered["Recommended Action"]
@@ -738,7 +782,11 @@ with tab1:
 
 
 with tab2:
-    st.subheader("Experimental support-review queue")
+    st.subheader(
+        "Proactive pilot queue"
+        if view_mode == "Proactive pilot"
+        else "Experimental support-review queue"
+    )
 
     st.caption(
         "Review tiers allocate workload by relative score: Tier 1 is the "
@@ -798,6 +846,7 @@ with tab2:
         "Product Purchased",
         "Plan Type",
         "Company Size",
+        "Ticket Type",
         "Risk Score",
         "Review Tier",
         "Value Score",
@@ -833,7 +882,11 @@ with tab2:
     st.download_button(
         "Download filtered action queue",
         queue.to_csv(index=False).encode("utf-8"),
-        "support_action_queue.csv",
+        (
+            "proactive_pilot_queue.csv"
+            if view_mode == "Proactive pilot"
+            else "support_action_queue.csv"
+        ),
         "text/csv",
     )
 
